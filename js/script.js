@@ -1,14 +1,10 @@
-// OpenWeatherMap API Key
 const API_KEY = "4dde6e137f0d145d346da61d7086e193";
-
-//Api key for weather data
 const WEATHER_API_KEY = "d0ef5e5ed0644742aac165611252610";
 
-// DOM Elements - will be initialized after DOM loads
 let searchForm, cityInput, forecastContainer, errorMessage, loading, locationBtn;
 let hourlyForecast, dailyForecast, tabButtons, hourlySection, dailySection;
-
 let hourlyChart = null;
+let lastHourlyData = null;
 
 document.addEventListener('DOMContentLoaded', function() {
     searchForm = document.getElementById("search-form");
@@ -22,7 +18,6 @@ document.addEventListener('DOMContentLoaded', function() {
     tabButtons = document.querySelectorAll(".tab-btn");
     hourlySection = document.getElementById("hourly-forecast-section");
     dailySection = document.getElementById("daily-forecast-section");
-    // Event Listeners
     if (searchForm) {
         searchForm.addEventListener("submit", handleSearch);
     }
@@ -95,15 +90,10 @@ async function handleLocationRequest() {
         };
         displayForecast(forecastData, coordinates);
     } catch (error) {
-        if (error.code === 1) {
-            showError("Location access denied. Please enable location permissions.");
-        } else if (error.code === 2) {
-            showError("Location unavailable. Please check your device settings.");
-        } else if (error.code === 3) {
-            showError("Location request timed out. Please try again.");
-        } else {
-            showError(error.message || "Unable to get your location");
-        }
+        if (error && error.code === 1) showError("Location access denied. Please enable location permissions.");
+        else if (error && error.code === 2) showError("Location unavailable. Please check your device settings.");
+        else if (error && error.code === 3) showError("Location request timed out. Please try again.");
+        else showError(error.message || "Unable to get your location");
     } finally {
         hideLoading();
         locationBtn.disabled = false;
@@ -142,7 +132,6 @@ async function getForecastData(lat, lon) {
     }
 
     const data = await response.json();
-    console.log('Forecast data fetched:', data);
     return {
         city: null,
         hourly: Array.isArray(data.hourly) ? data.hourly : [],
@@ -161,6 +150,41 @@ function groupByDay(forecastList) {
     }));
 }
 
+async function fetchWeatherApiHourlyByCoords(lat, lon, days = 2) {
+    const q = `${lat},${lon}`;
+    const url = `https://api.weatherapi.com/v1/forecast.json?key=${WEATHER_API_KEY}&q=${encodeURIComponent(q)}&days=${days}`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error('WeatherAPI request failed');
+    const json = await res.json();
+    const hours = [];
+    if (json && json.forecast && Array.isArray(json.forecast.forecastday)) {
+        json.forecast.forecastday.forEach(day => {
+            if (Array.isArray(day.hour)) day.hour.forEach(h => hours.push({ time_epoch: h.time_epoch, temp_c: h.temp_c }));
+        });
+    }
+    return hours;
+}
+
+async function addWeatherApiHourlyToChart(lat, lon, days = 2) {
+    if (!lastHourlyData) {
+        showError('Chart not initialized');
+        return;
+    }
+    try {
+        const hours = await fetchWeatherApiHourlyByCoords(lat, lon, days);
+        if (!hours || hours.length === 0) {
+            showError('No WeatherAPI hourly data available');
+            return;
+        }
+        const len = Math.min(hours.length, lastHourlyData.length);
+        const temps = hours.slice(0, len).map(h => Math.round(h.temp_c));
+        const extraDataset = { name: 'WeatherAPI Temp', values: temps, chartType: 'line' };
+        createHourlyChart(lastHourlyData, [extraDataset]);
+    } catch (err) {
+        showError(err.message || 'WeatherAPI fetch failed');
+    }
+}
+
 function displayForecast(data, coordinates) {
     document.getElementById("city-name").textContent = `${coordinates.name}${coordinates.country ? ", " + coordinates.country : ""}`;
     document.getElementById("coordinates").textContent = `Lat: ${coordinates.lat.toFixed(4)}, Lon: ${coordinates.lon.toFixed(4)}`;
@@ -169,6 +193,7 @@ function displayForecast(data, coordinates) {
     dailyForecast.innerHTML = "";
 
     createHourlyChart(data.hourly);
+    addWeatherApiHourlyToChart(coordinates.lat, coordinates.lon, 1);
     data.hourly.forEach((hour, index) => {
         const card = createHourlyCard(hour, index === 0);
         hourlyForecast.appendChild(card);
@@ -181,8 +206,14 @@ function displayForecast(data, coordinates) {
     showForecast();
 }
 
-function createHourlyChart(hourlyData) {
-    const fullLabels = hourlyData.map(hour => {
+function createHourlyChart(hourlyData, extraDatasets = []) {
+    const maxHours = 24;
+    const available = Array.isArray(hourlyData) ? hourlyData.length : 0;
+    const hoursToShow = Math.min(maxHours, available);
+    const sliced = Array.isArray(hourlyData) ? hourlyData.slice(0, hoursToShow) : [];
+
+    lastHourlyData = sliced;
+    const fullLabels = sliced.map(hour => {
         const date = new Date(hour.dt * 1000);
         return date.toLocaleTimeString("en-US", { hour: "numeric", hour12: true });
     });
@@ -192,17 +223,17 @@ function createHourlyChart(hourlyData) {
     const datasets = [
         {
             name: "Temperature",
-            values: hourlyData.map(hour => hour && (typeof hour.temp !== 'undefined') ? Math.round(hour.temp) : null),
+            values: sliced.map(hour => hour && (typeof hour.temp !== 'undefined') ? Math.round(hour.temp) : null),
             chartType: "line",
         },
         {
             name: "Feels Like",
-            values: hourlyData.map(hour => hour && (typeof hour.feels_like !== 'undefined') ? Math.round(hour.feels_like) : null),
+            values: sliced.map(hour => hour && (typeof hour.feels_like !== 'undefined') ? Math.round(hour.feels_like) : null),
             chartType: "line",
         },
         {
             name: "Rain (mm/h)",
-            values: hourlyData.map(hour => {
+            values: sliced.map(hour => {
                 let rain = 0;
                 if (hour && hour.rain) {
                     if (typeof hour.rain['1h'] !== 'undefined') rain = hour.rain['1h'];
@@ -215,6 +246,8 @@ function createHourlyChart(hourlyData) {
         },
     ];
 
+    const allDatasets = datasets.concat(extraDatasets || []);
+
     if (hourlyChart) {
         hourlyChart = null;
     }
@@ -223,11 +256,11 @@ function createHourlyChart(hourlyData) {
     chartContainer.innerHTML = "";
     const chartData = {
         labels: labels,
-        datasets: datasets,
+        datasets: allDatasets,
     };
 
     if (chartContainer.clientWidth === 0) {
-        setTimeout(() => createHourlyChart(hourlyData), 120);
+        setTimeout(() => createHourlyChart(hourlyData, extraDatasets), 120);
         return;
     }
 
