@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Weather Forecast - Here Comes the Sun (or Not)</title>
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>  
+    <nav class="navbar">
+        <a class="navbar-brand" href="index.html">☀️ Weather Search</a>
+        <div class="nav-actions">
+            <form id="search-form" role="search">
+                <input type="text" id="city-input" placeholder="Enter city name..." required>
+                <button type="submit" id="search-btn">Search</button>
+            </form>
+            <button type="button" id="location-btn" class="location-btn">📍 My Location</button>
+        </div>
+    </nav>
+
+    <main class="container">
+        <div id="error-message" class="error hidden"></div>
+        <div id="loading" class="loading hidden">Loading forecast...</div>
+
+        <div id="forecast-container" class="forecast-container hidden">
+            <div class="forecast-header">
+                <h1 id="city-name"></h1>
+                <p id="coordinates"></p>
+                <div class="forecast-tabs">
+                    <button class="tab-btn active" data-tab="hourly">
+                        ⏰ 24 Hours
+                    </button>
+                    <button class="tab-btn" data-tab="daily">
+                        📅 7 Days
+                    </button>
+                </div>
+            </div>
+
+            <div id="hourly-forecast-section" class="forecast-section active">
+                <h2 class="section-title">Hourly Forecast (Next 24 Hours)</h2>
+                
+                <div class="chart-container">
+                    <div id="hourly-chart"></div>
+                </div>
+                <div id="hourly-forecast" class="hourly-grid">
+                </div>
+            </div>
+            <div id="daily-forecast-section" class="forecast-section">
+                <h2 class="section-title">7-Day Daily Forecast</h2>
+                <div id="daily-forecast" class="daily-grid">
+                </div>
+            </div>
+        </div>
+    </main>
+    
+    <script src="https://cdn.jsdelivr.net/npm/frappe-charts@1.2.4/dist/frappe-charts.min.iife.js"></script>
+    <script src="js/script.js"></script>
+</body>
+</html>
